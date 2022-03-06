@@ -6,19 +6,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="SDK\amx\amx.h">
-      <Filter>amx</Filter>
-    </ClInclude>
-    <ClInclude Include="SDK\amx\getch.h">
-      <Filter>amx</Filter>
-    </ClInclude>
-    <ClInclude Include="SDK\plugin.h">
-      <Filter>amx</Filter>
-    </ClInclude>
     <ClInclude Include="SDK\plugincommon.h">
-      <Filter>amx</Filter>
-    </ClInclude>
-    <ClInclude Include="SDK\amx\sclinux.h">
       <Filter>amx</Filter>
     </ClInclude>
     <ClInclude Include="array.h" />
@@ -27,14 +15,18 @@
     <ClInclude Include="specifiers.h" />
     <ClInclude Include="sscanf.h" />
     <ClInclude Include="utils.h" />
+    <ClInclude Include="args.h" />
+    <ClInclude Include="SDK\osdefs.h">
+      <Filter>amx</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\getch.h">
+      <Filter>amx</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\amx.h">
+      <Filter>amx</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SDK\amxplugin.cpp">
-      <Filter>amx</Filter>
-    </ClCompile>
-    <ClCompile Include="SDK\amx\getch.c">
-      <Filter>amx</Filter>
-    </ClCompile>
     <ClCompile Include="array.cpp" />
     <ClCompile Include="data.cpp" />
     <ClCompile Include="enum.cpp" />
@@ -42,9 +34,15 @@
     <ClCompile Include="sscanf.cpp" />
     <ClCompile Include="utils.cpp" />
     <ClCompile Include="kustom.cpp" />
+    <ClCompile Include="SDK\amx.c">
+      <Filter>amx</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK\amxplugin.c">
+      <Filter>amx</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="YSF.def">
+    <None Include="sscanf.def">
       <Filter>amx</Filter>
     </None>
   </ItemGroup>

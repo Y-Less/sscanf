@@ -1,43 +1,66 @@
-/*  
+/*
+ *  sscanf 2.11.4
+ *
  *  Version: MPL 1.1
- *  
- *  The contents of this file are subject to the Mozilla Public License Version 
- *  1.1 (the "License"); you may not use this file except in compliance with 
- *  the License. You may obtain a copy of the License at 
+ *
+ *  The contents of this file are subject to the Mozilla Public License Version
+ *  1.1 (the "License"); you may not use this file except in compliance with
+ *  the License. You may obtain a copy of the License at
  *  http://www.mozilla.org/MPL/
- *  
+ *
  *  Software distributed under the License is distributed on an "AS IS" basis,
  *  WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
  *  for the specific language governing rights and limitations under the
  *  License.
- *  
+ *
  *  The Original Code is the sscanf 2.0 SA:MP plugin.
- *  
+ *
  *  The Initial Developer of the Original Code is Alex "Y_Less" Cole.
- *  Portions created by the Initial Developer are Copyright (C) 2010
+ *  Portions created by the Initial Developer are Copyright (c) 2022
  *  the Initial Developer. All Rights Reserved.
- *  
+ *
  *  Contributor(s):
  *
- *  SA:MP team - plugin framework.
- *  
+ *      Cheaterman
+ *      DEntisT
+ *      Emmet_
+ *      karimcambridge
+ *      kalacsparty
+ *      Kirima
+ *      leHeix
+ *      maddinat0r
+ *      Southclaws
+ *      Y_Less
+ *      ziggi
+ *
  *  Special Thanks to:
- *  
- *  SA:MP Team past, present and future
+ *
+ *      SA:MP Team past, present, and future.
+ *      maddinat0r, for hosting the repo for a very long time.
+ *      Emmet_, for his efforts in maintaining it for almost a year.
  */
 
 #include <malloc.h>
 #include <string.h>
 
 #include "sscanf.h"
+#include "args.h"
 #include "specifiers.h"
 #include "utils.h"
 #include "data.h"
 #include "array.h"
 #include "enum.h"
 
-#include "SDK/amx/amx.h"
 #include "SDK/plugincommon.h"
+
+#define DEFER_STRINGISE(n) #n
+#define STRINGISE(n) DEFER_STRINGISE(n)
+
+#define SSCANF_VERSION_MAJOR 2
+#define SSCANF_VERSION_MINOR 11
+#define SSCANF_VERSION_BUILD 4
+
+#define SSCANF_VERSION STRINGISE(SSCANF_VERSION_MAJOR) "." STRINGISE(SSCANF_VERSION_MINOR) "." STRINGISE(SSCANF_VERSION_BUILD)
 
 //----------------------------------------------------------
 
@@ -48,14 +71,58 @@ logprintf_t
 AMX_NATIVE
 	SetPlayerName;
 
-//GetServer_t
-//	GetServer;
+// These are the pointers to all the functions currently used by sscanf.  If
+// more are added, this table will need to be updated.
+static void *
+	NPC_AMX_FUNCTIONS[] = {
+		NULL,                       // PLUGIN_AMX_EXPORT_Align16
+		NULL,                       // PLUGIN_AMX_EXPORT_Align32
+		NULL,                       // PLUGIN_AMX_EXPORT_Align64
+		NULL,                       // PLUGIN_AMX_EXPORT_Allot
+		NULL,                       // PLUGIN_AMX_EXPORT_Callback
+		NULL,                       // PLUGIN_AMX_EXPORT_Cleanup
+		NULL,                       // PLUGIN_AMX_EXPORT_Clone
+		(void *)&npcamx_Exec,       // PLUGIN_AMX_EXPORT_Exec
+		NULL,                       // PLUGIN_AMX_EXPORT_FindNative
+		(void *)&npcamx_FindPublic, // PLUGIN_AMX_EXPORT_FindPublic
+		NULL,                       // PLUGIN_AMX_EXPORT_FindPubVar
+		NULL,                       // PLUGIN_AMX_EXPORT_FindTagId
+		NULL,                       // PLUGIN_AMX_EXPORT_Flags
+		(void *)&npcamx_GetAddr,    // PLUGIN_AMX_EXPORT_GetAddr
+		NULL,                       // PLUGIN_AMX_EXPORT_GetNative
+		NULL,                       // PLUGIN_AMX_EXPORT_GetPublic
+		NULL,                       // PLUGIN_AMX_EXPORT_GetPubVar
+		(void *)&npcamx_GetString,  // PLUGIN_AMX_EXPORT_GetString
+		NULL,                       // PLUGIN_AMX_EXPORT_GetTag
+		NULL,                       // PLUGIN_AMX_EXPORT_GetUserData
+		NULL,                       // PLUGIN_AMX_EXPORT_Init
+		NULL,                       // PLUGIN_AMX_EXPORT_InitJIT
+		NULL,                       // PLUGIN_AMX_EXPORT_MemInfo
+		NULL,                       // PLUGIN_AMX_EXPORT_NameLength
+		NULL,                       // PLUGIN_AMX_EXPORT_NativeInfo
+		NULL,                       // PLUGIN_AMX_EXPORT_NumNatives
+		NULL,                       // PLUGIN_AMX_EXPORT_NumPublics
+		NULL,                       // PLUGIN_AMX_EXPORT_NumPubVars
+		NULL,                       // PLUGIN_AMX_EXPORT_NumTags
+		NULL,                       // PLUGIN_AMX_EXPORT_Push
+		NULL,                       // PLUGIN_AMX_EXPORT_PushArray
+		(void *)&npcamx_PushString, // PLUGIN_AMX_EXPORT_PushString
+		NULL,                       // PLUGIN_AMX_EXPORT_RaiseError
+		(void *)&npcamx_Register,   // PLUGIN_AMX_EXPORT_Register
+		(void *)&npcamx_Release,    // PLUGIN_AMX_EXPORT_Release
+		NULL,                       // PLUGIN_AMX_EXPORT_SetCallback
+		NULL,                       // PLUGIN_AMX_EXPORT_SetDebugHook
+		(void *)&npcamx_SetString,  // PLUGIN_AMX_EXPORT_SetString
+		NULL,                       // PLUGIN_AMX_EXPORT_SetUserData
+		(void *)&npcamx_StrLen,     // PLUGIN_AMX_EXPORT_StrLen
+		NULL,                       // PLUGIN_AMX_EXPORT_UTF8Check
+		NULL,                       // PLUGIN_AMX_EXPORT_UTF8Get
+		NULL,                       // PLUGIN_AMX_EXPORT_UTF8Len
+		NULL,                       // PLUGIN_AMX_EXPORT_UTF8Put
+};
 
 extern void *
 	pAMXFunctions;
-
-//extern int
-//	g_iServerVersion;
 
 extern unsigned int
 	g_iTrueMax,
@@ -72,6 +139,8 @@ extern char *
 	g_szPlayerNames;
 
 extern int
+	gAlpha,
+	gForms,
 	gOptions;
 
 AMX *
@@ -82,12 +151,12 @@ AMX *
 
 #define SAVE_VALUE(m)       \
 	if (doSave)             \
-		amx_GetAddr(amx, params[paramPos++], &cptr), *cptr = m
+		*args.Next() = m
 
 #define SAVE_VALUE_F(m)     \
 	if (doSave) {           \
 		float f = (float)m; \
-		amx_GetAddr(amx, params[paramPos++], &cptr), *cptr = amx_ftoc(f); }
+		*args.Next() = amx_ftoc(f); }
 
 // Based on amx_StrParam but using 0 length strings.  This can't be inline as
 // it uses alloca - it could be written to use malloc instead, but that would
@@ -101,6 +170,34 @@ AMX *
 			if (((result) = (char *)alloca((amx_length_ + 1) * sizeof (*(result)))) != NULL) \
 				amx_GetString((result), amx_cstr_, sizeof (*(result)) > 1, amx_length_ + 1); \
 			else {                                                                           \
+				SscanfError("Unable to allocate memory.");                                   \
+				return SSCANF_FAIL_RETURN; } }                                               \
+		else (result) = ""; }                                                                \
+	while (false)
+
+#define SAFE_STR_PARAM(amx,param,result)                                                     \
+	do {                                                                                     \
+		cell * amx_cstr_; int amx_length_;                                                   \
+		amx_GetAddr((amx), (param), &amx_cstr_);                                             \
+		amx_StrLen(amx_cstr_, &amx_length_);                                                 \
+		if (amx_length_ > 0) {                                                               \
+			if (((result) = (char *)alloca((amx_length_ + 1) * sizeof (*(result)))) != NULL) \
+				amx_GetString((result), amx_cstr_, sizeof (*(result)) > 1, amx_length_ + 1); \
+			else {                                                                           \
+				logprintf("sscanf error: Unable to allocate memory.");                       \
+				return SSCANF_FAIL_RETURN; } }                                               \
+		else (result) = ""; }                                                                \
+	while (false)
+
+#define LENGTH_STR_PARAM(amx,param,result,length)                                            \
+	do {                                                                                     \
+		cell * amx_cstr_;                                                                    \
+		amx_GetAddr((amx), (param), &amx_cstr_);                                             \
+		amx_StrLen(amx_cstr_, &length);                                                      \
+		if (length > 0) {                                                                    \
+			if (((result) = (char *)alloca((length + 1) * sizeof (*(result)))) != NULL)      \
+				amx_GetString((result), amx_cstr_, sizeof (*(result)) > 1, length + 1);      \
+			else {                                                                           \
 				logprintf("sscanf error: Unable to allocate memory.");                       \
 				return SSCANF_FAIL_RETURN; } }                                               \
 		else (result) = ""; }                                                                \
@@ -112,7 +209,7 @@ AMX *
 	if (Do##n(&string, &b)) {    \
 		SAVE_VALUE((cell)b);     \
 		break; }                 \
-	RestoreOpts(defaultOpts);      \
+	RestoreOpts(defaultOpts, defaultAlpha, defaultForms);    \
 	return SSCANF_FAIL_RETURN; }
 
 #define DOV(m,n)                 \
@@ -125,13 +222,13 @@ AMX *
 	if (Do##n(&string, &b)) {    \
 		SAVE_VALUE_F(b)          \
 		break; }                 \
-	RestoreOpts(defaultOpts);      \
+	RestoreOpts(defaultOpts, defaultAlpha, defaultForms);      \
 	return SSCANF_FAIL_RETURN; }
 
 // Macros for the default values.  None of these have ifs as the return value
 // of GetReturnDefault is always true - we don't penalise users for the
 // mistakes of the coder - they will get warning messages if they get the
-// format wrong, and I don't know of any mistkes which aren't warned about
+// format wrong, and I don't know of any mistakes which aren't warned about
 // (admittedly a silly statement as if I did I would have fixed them).
 #define DE(m,n)                  \
 	{m b;                        \
@@ -171,66 +268,62 @@ bool
 	DoK(AMX * amx, char ** defaults, char ** input, cell * cptr, bool optional, bool all);
 
 void
-	DoOptions(char *, cell);
+	SetOptions(char *, cell);
 
-// native sscanf(const data[], const format[], (Float,_}:...);
-static cell AMX_NATIVE_CALL
-	n_sscanf(AMX * amx, cell * params)
+cell
+	GetOptions(char *);
+
+char
+	* gFormat = 0,
+	* gCallFile = 0;
+
+int
+	gCallLine = 0;
+
+cell
+	* gCallResolve = 0;
+
+bool SscanfErrLine()
 {
-	if (g_iTrueMax == 0)
+	if (gCallResolve == 0)
 	{
-		logprintf("sscanf error: System not initialised.");
-		return SSCANF_FAIL_RETURN;
+		gCallFile = "sscanf";
+		gCallLine = -1;
 	}
-	// Friendly note, the most complex set of specifier additions is:
-	// 
-	//  A<i>(10, 11)[5]
-	// 
-	// In that exact order - type, default, size.  It's very opposite to how
-	// it's done in code, where you would do the eqivalent to:
-	// 
-	//  <i>[5] = {10, 11}
-	// 
-	// But this method is vastly simpler to parse in this context!  Technically
-	// you can, due to legacy support for 'p', do:
-	// 
-	//  Ai(10, 11)[5]
-	// 
-	// But you will get an sscanf warning, and I may remove that ability from
-	// the start - that will mean a new function, but an easy to write one.
-	// In fact the most complex will probably be something like:
-	// 
-	//  E<ifs[32]s[8]d>(10, 12.3, Hello there, Hi, 42)
-	// 
-	// Get the number of parameters passed.  We add one as the indexes are out
-	// by one (OBOE - Out By One Error) due to params[0] being the parameter
-	// count, not an actual parameter.
-	const int
-		paramCount = ((int)params[0] / 4) + 1;
-	// Could add a check for only 3 parameters here - I can't think of a time
-	// when you would not want any return values at all, but that doesn't mean
-	// they don't exist - you could just want to check but not save the format.
-	// Update - that is now a possibility with the '{...}' specifiers.
-	if (paramCount < (2 + 1))
+	else if (gCallFile == 0)
 	{
-		logprintf("sscanf error: Missing required parameters.");
-		return SSCANF_FAIL_RETURN;
+		// Extract the filename.
+		int length;
+		amx_StrLen(gCallResolve, &length);
+		if (length > 0)
+		{
+			if ((gCallFile = (char *)malloc((length + 1))) != NULL)
+			{
+				amx_GetString(gCallFile, gCallResolve, false, length + 1);
+			}
+			else
+			{
+				logprintf("sscanf error: Unable to allocate memory.");
+				gCallFile = "sscanf";
+				gCallLine = -1;
+				gCallResolve = 0;
+			}
+		}
+		else
+		{
+			gCallFile = "sscanf";
+			gCallLine = -1;
+			gCallResolve = 0;
+		}
 	}
-	//else if (paramCount == (2 + 1))
-	//{
-		// Only have an input and a specifier - better hope the whole specifier
-		// is quite (i.e. enclosed in '{...}').
-	//}
-	// Set up function wide values.
-	// Get and check the main data.
-	// Pointer to the current input data.
-	char *
-		string;
-	STR_PARAM(amx, params[1], string);
-	// Pointer to the current format specifier.
-	char *
-		format;
-	STR_PARAM(amx, params[2], format);
+	return gCallLine > 0;
+}
+
+static cell
+	Sscanf(AMX * amx, char * string, char * format, cell const * params, const int paramCount)
+{
+	struct args_s
+		args{ amx, params, 0, 0 };
 	// Check for CallRemoteFunction style null strings and correct.
 	if (string[0] == '\1' && string[1] == '\0')
 	{
@@ -238,12 +331,9 @@ static cell AMX_NATIVE_CALL
 	}
 	// Save the default options so we can have local modifications.
 	int
+		defaultAlpha = gAlpha,
+		defaultForms = gForms,
 		defaultOpts = gOptions;
-	// Current parameter to save data to.
-	int
-		paramPos = 3;
-	cell *
-		cptr;
 	InitialiseDelimiter();
 	// Skip leading space.
 	SkipWhitespace(&string);
@@ -262,7 +352,7 @@ static cell AMX_NATIVE_CALL
 	g_aCurAMX = amx;
 	// Now do the main loop as long as there are variables to store the data in
 	// and input string remaining to get the data from.
-	while (*string && (paramPos < paramCount || !doSave))
+	while (*string && (args.Pos < paramCount || !doSave))
 	{
 		if (!*format)
 		{
@@ -273,16 +363,16 @@ static cell AMX_NATIVE_CALL
 			// There is only two format specifiers, but four returns.  This may
 			// also be reached if there is too much input data, but that is
 			// considered OK as that is likely a user's fault.
-			if (paramPos < paramCount)
+			if (args.Pos < paramCount)
 			{
-				logprintf("sscanf warning: Format specifier does not match parameter count.");
+				SscanfWarning("Format specifier does not match parameter count 1.");
 			}
 			if (!doSave)
 			{
 				// Started a quiet section but never explicitly ended it.
-				logprintf("sscanf warning: Unclosed quiet section.");
+				SscanfWarning("Unclosed quiet section.");
 			}
-			RestoreOpts(defaultOpts);
+			RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 			return SSCANF_TRUE_RETURN;
 		}
 		else if (IsWhitespace(*format))
@@ -328,6 +418,11 @@ static cell AMX_NATIVE_CALL
 				case 'h':
 				case 'x':
 					DO(int, H)
+				case 'M':
+					DX(unsigned int, M)
+					// FALLTHROUGH
+				case 'm':
+					DO(unsigned int, M)
 				case 'O':
 					DX(int, O)
 					// FALLTHROUGH
@@ -351,13 +446,13 @@ static cell AMX_NATIVE_CALL
 					else
 					{
 						// Already in a quiet section.
-						logprintf("sscanf warning: Can't have nestled quiet sections.");
+						SscanfWarning("Can't have nestled quiet sections.");
 					}
 					continue;
 				case '}':
 					if (doSave)
 					{
-						logprintf("sscanf warning: Not in a quiet section.");
+						SscanfWarning("Not in a quiet section.");
 					}
 					else
 					{
@@ -389,12 +484,6 @@ static cell AMX_NATIVE_CALL
 					ResetDelimiter();
 					AddDelimiter(GetSingleType(&format));
 					continue;
-				case 'Z':
-					logprintf("sscanf warning: 'Z' doesn't exist - that would be an optional, deprecated optional string!.");
-					// FALLTHROUGH
-				case 'z':
-					logprintf("sscanf warning: 'z' is deprecated, consider using 'S' instead.");
-					// FALLTHROUGH
 				case 'S':
 					if (IsDelimiter(*string))
 					{
@@ -402,13 +491,12 @@ static cell AMX_NATIVE_CALL
 							dest;
 						int
 							length;
-						if (DoSD(&format, &dest, &length))
+						if (DoSD(&format, &dest, &length, args))
 						{
 							// Send the string to PAWN.
 							if (doSave)
 							{
-								amx_GetAddr(amx, params[paramPos++], &cptr);
-								amx_SetString(cptr, dest, 0, 0, length);
+								amx_SetString(args.Next(), dest, 0, 0, length);
 							}
 						}
 						break;
@@ -420,15 +508,49 @@ static cell AMX_NATIVE_CALL
 					{
 						// Get the length.
 						int
-							length = GetLength(&format, false);
+							length = GetLength(&format, args);
 						char *
 							dest;
 						DoS(&string, &dest, length, IsEnd(*format) || (!doSave && *format == '}' && IsEnd(*(format + 1))));
 						// Send the string to PAWN.
 						if (doSave)
 						{
-							amx_GetAddr(amx, params[paramPos++], &cptr);
-							amx_SetString(cptr, dest, 0, 0, length);
+							amx_SetString(args.Next(), dest, 0, 0, length);
+						}
+					}
+					break;
+				case 'Z':
+					if (IsDelimiter(*string))
+					{
+						char *
+							dest;
+						int
+							length;
+						if (DoSD(&format, &dest, &length, args))
+						{
+							// Send the string to PAWN.
+							if (doSave)
+							{
+								amx_SetString(args.Next(), dest, 1, 0, length);
+							}
+						}
+						break;
+					}
+					// Implicit "else".
+					SkipDefaultEx(&format);
+					// FALLTHROUGH
+				case 'z':
+					{
+						// Get the length.
+						int
+							length = GetLength(&format, args);
+						char *
+							dest;
+						DoS(&string, &dest, length, IsEnd(*format) || (!doSave && *format == '}' && IsEnd(*(format + 1))));
+						// Send the string to PAWN.
+						if (doSave)
+						{
+							amx_SetString(args.Next(), dest, 1, 0, length);
 						}
 					}
 					break;
@@ -441,21 +563,22 @@ static cell AMX_NATIVE_CALL
 						if (*format == '[')
 						{
 							int
-								len = GetLength(&format, true);
+								len = GetLength(&format, args);
 							if (gOptions & 1)
 							{
 								// Incompatible combination.
-								logprintf("sscanf error: 'U(name)[len]' is incompatible with OLD_DEFAULT_NAME.");
+								SscanfError("'U(name)[len]' is incompatible with OLD_DEFAULT_NAME.");
 								return SSCANF_FAIL_RETURN;
 							}
 							else if (len < 2)
 							{
-								logprintf("sscanf error: 'U(num)[len]' length under 2.");
+								SscanfError("'U(num)[len]' length under 2.");
 								return SSCANF_FAIL_RETURN;
 							}
 							else if (doSave)
 							{
-								amx_GetAddr(amx, params[paramPos++], &cptr);
+								cell *
+									cptr = args.Next();
 								*cptr++ = b;
 								*cptr = g_iInvalid;
 							}
@@ -472,10 +595,10 @@ static cell AMX_NATIVE_CALL
 					if (*format == '[')
 					{
 						int
-							len = GetLength(&format, true);
+							len = GetLength(&format, args);
 						if (len < 2)
 						{
-							logprintf("sscanf error: 'u[len]' length under 2.");
+							SscanfError("'u[len]' length under 2.");
 							return SSCANF_FAIL_RETURN;
 						}
 						else
@@ -489,7 +612,8 @@ static cell AMX_NATIVE_CALL
 									tstr;
 								// Don't detect multiple results.
 								gOptions &= ~4;
-								amx_GetAddr(amx, params[paramPos++], &cptr);
+								cell *
+									cptr = args.Next();
 								while (--len)
 								{
 									tstr = string;
@@ -540,21 +664,22 @@ static cell AMX_NATIVE_CALL
 						if (*format == '[')
 						{
 							int
-								len = GetLength(&format, true);
+								len = GetLength(&format, args);
 							if (gOptions & 1)
 							{
 								// Incompatible combination.
-								logprintf("sscanf error: 'Q(name)[len]' is incompatible with OLD_DEFAULT_NAME.");
+								SscanfError("'Q(name)[len]' is incompatible with OLD_DEFAULT_NAME.");
 								return SSCANF_FAIL_RETURN;
 							}
 							else if (len < 2)
 							{
-								logprintf("sscanf error: 'Q(num)[len]' length under 2.");
+								SscanfError("'Q(num)[len]' length under 2.");
 								return SSCANF_FAIL_RETURN;
 							}
 							else if (doSave)
 							{
-								amx_GetAddr(amx, params[paramPos++], &cptr);
+								cell *
+									cptr = args.Next();
 								*cptr++ = b;
 								*cptr = g_iInvalid;
 							}
@@ -571,10 +696,10 @@ static cell AMX_NATIVE_CALL
 					if (*format == '[')
 					{
 						int
-							len = GetLength(&format, true);
+							len = GetLength(&format, args);
 						if (len < 2)
 						{
-							logprintf("sscanf error: 'q[len]' length under 2.");
+							SscanfError("'q[len]' length under 2.");
 							return SSCANF_FAIL_RETURN;
 						}
 						else
@@ -588,7 +713,8 @@ static cell AMX_NATIVE_CALL
 									tstr;
 								// Don't detect multiple results.
 								gOptions &= ~4;
-								amx_GetAddr(amx, params[paramPos++], &cptr);
+								cell *
+									cptr = args.Next();
 								while (--len)
 								{
 									tstr = string;
@@ -639,21 +765,22 @@ static cell AMX_NATIVE_CALL
 						if (*format == '[')
 						{
 							int
-								len = GetLength(&format, true);
+								len = GetLength(&format, args);
 							if (gOptions & 1)
 							{
 								// Incompatible combination.
-								logprintf("sscanf error: 'R(name)[len]' is incompatible with OLD_DEFAULT_NAME.");
+								SscanfError("'R(name)[len]' is incompatible with OLD_DEFAULT_NAME.");
 								return SSCANF_FAIL_RETURN;
 							}
 							else if (len < 2)
 							{
-								logprintf("sscanf error: 'R(num)[len]' length under 2.");
+								SscanfError("'R(num)[len]' length under 2.");
 								return SSCANF_FAIL_RETURN;
 							}
 							else if (doSave)
 							{
-								amx_GetAddr(amx, params[paramPos++], &cptr);
+								cell *
+									cptr = args.Next();
 								*cptr++ = b;
 								*cptr = g_iInvalid;
 							}
@@ -670,10 +797,10 @@ static cell AMX_NATIVE_CALL
 					if (*format == '[')
 					{
 						int
-							len = GetLength(&format, true);
+							len = GetLength(&format, args);
 						if (len < 2)
 						{
-							logprintf("sscanf error: 'r[len]' length under 2.");
+							SscanfError("'r[len]' length under 2.");
 							return SSCANF_FAIL_RETURN;
 						}
 						else
@@ -685,9 +812,10 @@ static cell AMX_NATIVE_CALL
 							{
 								char *
 									tstr;
+								cell *
+									cptr = args.Next();
 								// Don't detect multiple results.
 								gOptions &= ~4;
-								amx_GetAddr(amx, params[paramPos++], &cptr);
 								while (--len)
 								{
 									tstr = string;
@@ -731,81 +859,33 @@ static cell AMX_NATIVE_CALL
 					break;
 				case 'A':
 					// We need the default values here.
-					if (doSave)
+					if (DoA(&format, &string, args, true, doSave))
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoA(&format, &string, cptr, true))
-						{
-							break;
-						}
+						break;
 					}
-					else
-					{
-						// Pass a NULL pointer so data isn't saved anywhere.
-						if (DoA(&format, &string, NULL, true))
-						{
-							break;
-						}
-					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case 'a':
-					if (doSave)
+					if (DoA(&format, &string, args, false, doSave))
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoA(&format, &string, cptr, false))
-						{
-							break;
-						}
+						break;
 					}
-					else
-					{
-						// Pass a NULL pointer so data isn't saved anywhere.
-						if (DoA(&format, &string, NULL, false))
-						{
-							break;
-						}
-					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case 'E':
 					// We need the default values here.
-					if (doSave)
+					if (DoE(&format, &string, args, true, doSave))
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoE(&format, &string, cptr, true))
-						{
-							break;
-						}
+						break;
 					}
-					else
-					{
-						// Pass a NULL pointer so data isn't saved anywhere.
-						if (DoE(&format, &string, NULL, true))
-						{
-							break;
-						}
-					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case 'e':
-					if (doSave)
+					if (DoE(&format, &string, args, false, doSave))
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoE(&format, &string, cptr, false))
-						{
-							break;
-						}
+						break;
 					}
-					else
-					{
-						// Pass a NULL pointer so data isn't saved anywhere.
-						if (DoE(&format, &string, NULL, false))
-						{
-							break;
-						}
-					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case 'K':
 				{
@@ -820,8 +900,7 @@ static cell AMX_NATIVE_CALL
 					// We need the default values here.
 					if (doSave)
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoK(amx, &format, &string, cptr, true, consume_all))
+						if (DoK(amx, &format, &string, args.Next(), true, consume_all))
 						{
 							break;
 						}
@@ -834,7 +913,7 @@ static cell AMX_NATIVE_CALL
 							break;
 						}
 					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				}
 				case 'k':
@@ -844,8 +923,7 @@ static cell AMX_NATIVE_CALL
 						|| (!doSave && *after_spec == '}' && IsEnd(*(after_spec + 1)));
 					if (doSave)
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoK(amx, &format, &string, cptr, false, consume_all))
+						if (DoK(amx, &format, &string, args.Next(), false, consume_all))
 						{
 							break;
 						}
@@ -858,7 +936,7 @@ static cell AMX_NATIVE_CALL
 							break;
 						}
 					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				}
 				case '\'':
@@ -914,7 +992,7 @@ static cell AMX_NATIVE_CALL
 							if (!find)
 							{
 								// Didn't find the string
-								RestoreOpts(defaultOpts);
+								RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 								return SSCANF_FAIL_RETURN;
 							}
 							// Found the string.  Update the current string
@@ -930,12 +1008,12 @@ static cell AMX_NATIVE_CALL
 						}
 						else
 						{
-							logprintf("sscanf warning: Unclosed string literal.");
+							SscanfWarning("Unclosed string literal.");
 							char *
 								find = strstr(string, format);
 							if (!find)
 							{
-								RestoreOpts(defaultOpts);
+								RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 								return SSCANF_FAIL_RETURN;
 							}
 							string = find + (write - format);
@@ -947,15 +1025,15 @@ static cell AMX_NATIVE_CALL
 					{
 						char *
 							t = GetMultiType(&format);
-						if (t) DoOptions(t, -1);
+						if (t) SetOptions(t, -1);
 						else return SSCANF_FAIL_RETURN;
 						continue;
 					}
 				case '%':
-					logprintf("sscanf warning: sscanf specifiers do not require '%' before them.");
+					SscanfWarning("sscanf specifiers do not require '%' before them.");
 					continue;
 				default:
-					logprintf("sscanf warning: Unknown format specifier '%c', skipping.", *(format - 1));
+					SscanfWarning("Unknown format specifier '%c', skipping.", *(format - 1));
 					continue;
 			}
 			// Loop cleanup - only skip one spacer so that we can detect
@@ -974,21 +1052,21 @@ static cell AMX_NATIVE_CALL
 	// Temporary to the end of the code.
 	ResetDelimiter();
 	AddDelimiter(')');
-	// We don't need code here to handle the case where paramPos was reached,
+	// We don't need code here to handle the case where args.Pos was reached,
 	// but the end of the string wasn't - if that's the case there's no
 	// problem as we just ignore excess string data.
-	while (paramPos < paramCount || !doSave)
+	while (args.Pos < paramCount || !doSave)
 	{
 		// Loop through if there's still parameters remaining.
 		if (!*format)
 		{
-			logprintf("sscanf warning: Format specifier does not match parameter count.");
+			SscanfWarning("Format specifier does not match parameter count 2.");
 			if (!doSave)
 			{
 				// Started a quiet section but never explicitly ended it.
-				logprintf("sscanf warning: Unclosed quiet section.");
+				SscanfWarning("Unclosed quiet section.");
 			}
-			RestoreOpts(defaultOpts);
+			RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 			return SSCANF_TRUE_RETURN;
 		}
 		else if (IsWhitespace(*format))
@@ -1014,6 +1092,8 @@ static cell AMX_NATIVE_CALL
 				case 'H':
 				case 'X':
 					DE(int, H)
+				case 'M':
+					DE(unsigned int, M)
 				case 'O':
 					DE(int, O)
 				case 'F':
@@ -1027,52 +1107,23 @@ static cell AMX_NATIVE_CALL
 				case 'R':
 					DE(int, R)
 				case 'A':
-					if (doSave)
+					if (DoA(&format, NULL, args, true, doSave))
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoA(&format, NULL, cptr, true))
-						{
-							break;
-						}
+						break;
 					}
-					else
-					{
-						// Pass a NULL pointer so data isn't saved anywhere.
-						// Also pass NULL data so it knows to only collect the
-						// default values.
-						if (DoA(&format, NULL, NULL, true))
-						{
-							break;
-						}
-					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case 'E':
-					if (doSave)
+					if (DoE(&format, NULL, args, true, doSave))
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoE(&format, NULL, cptr, true))
-						{
-							break;
-						}
+						break;
 					}
-					else
-					{
-						// Pass a NULL pointer so data isn't saved anywhere.
-						// Also pass NULL data so it knows to only collect the
-						// default values.
-						if (DoE(&format, NULL, NULL, true))
-						{
-							break;
-						}
-					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case 'K':
 					if (doSave)
 					{
-						amx_GetAddr(amx, params[paramPos++], &cptr);
-						if (DoK(amx, &format, NULL, cptr, true, false))
+						if (DoK(amx, &format, NULL, args.Next(), true, false))
 						{
 							break;
 						}
@@ -1087,7 +1138,7 @@ static cell AMX_NATIVE_CALL
 							break;
 						}
 					}
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case '{':
 					if (doSave)
@@ -1097,44 +1148,53 @@ static cell AMX_NATIVE_CALL
 					else
 					{
 						// Already in a quiet section.
-						logprintf("sscanf warning: Can't have nestled quiet sections.");
+						SscanfWarning("Can't have nestled quiet sections.");
 					}
 					break;
 				case '}':
 					if (doSave)
 					{
-						logprintf("sscanf warning: Not in a quiet section.");
+						SscanfWarning("Not in a quiet section.");
 					}
 					else
 					{
 						doSave = true;
 					}
 					break;
-				case 'Z':
-					logprintf("sscanf warning: 'Z' doesn't exist - that would be an optional, deprecated optional string!.");
-					// FALLTHROUGH
-				case 'z':
-					logprintf("sscanf warning: 'z' is deprecated, consider using 'S' instead.");
-					// FALLTHROUGH
 				case 'S':
 					{
 						char *
 							dest;
 						int
 							length;
-						if (DoSD(&format, &dest, &length))
+						if (DoSD(&format, &dest, &length, args))
 						{
 							// Send the string to PAWN.
 							if (doSave)
 							{
-								amx_GetAddr(amx, params[paramPos++], &cptr);
-								amx_SetString(cptr, dest, 0, 0, length);
+								amx_SetString(args.Next(), dest, 0, 0, length);
+							}
+						}
+					}
+					break;
+				case 'Z':
+					{
+						char *
+							dest;
+						int
+							length;
+						if (DoSD(&format, &dest, &length, args))
+						{
+							// Send the string to PAWN.
+							if (doSave)
+							{
+								amx_SetString(args.Next(), dest, 1, 0, length);
 							}
 						}
 					}
 					break;
 				case 'P':
-					//logprintf("sscanf warning: You can't have an optional delimiter.");
+					//SscanfWarning("You can't have an optional delimiter.");
 					GetMultiType(&format);
 					continue;
 					// FALLTHROUGH
@@ -1167,7 +1227,7 @@ static cell AMX_NATIVE_CALL
 						}
 						else
 						{
-							logprintf("sscanf warning: Unclosed string literal.");
+							SscanfWarning("Unclosed string literal.");
 						}
 					}
 					break;
@@ -1188,8 +1248,10 @@ static cell AMX_NATIVE_CALL
 				case 'q':
 				case 'r':
 				case 's':
+				case 'z':
 				case 'u':
 				case 'x':
+				case 'm':
 					// These are non optional items, but the input string
 					// didn't include them, so we fail - this is in fact the
 					// most basic definition of a fail (the original)!  We
@@ -1199,16 +1261,16 @@ static cell AMX_NATIVE_CALL
 					// doesn't matter - the coder should have tested for those
 					// things, and the more important thing is that the user
 					// didn't enter the correct data.
-					RestoreOpts(defaultOpts);
+					RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 					return SSCANF_FAIL_RETURN;
 				case '?':
 					GetMultiType(&format);
 					continue;
 				case '%':
-					logprintf("sscanf warning: sscanf specifiers do not require '%' before them.");
+					SscanfWarning("sscanf specifiers do not require '%' before them.");
 					break;
 				default:
-					logprintf("sscanf warning: Unknown format specifier '%c', skipping.", *(format - 1));
+					SscanfWarning("Unknown format specifier '%c', skipping.", *(format - 1));
 					break;
 			}
 			// Don't need any cleanup here.
@@ -1218,56 +1280,321 @@ static cell AMX_NATIVE_CALL
 	{
 		do
 		{
-			if (!IsWhitespace(*format))
+			if (*format == '\'')
 			{
-				// Only print this warning if the remaining characters are not
-				// spaces - spaces are allowed, and sometimes required, on the
-				// ends of formats (e.g. to stop the final 's' specifier
-				// collecting all remaining characters and only get one word).
-				// We could check that the remaining specifier is a valid one,
-				// but this is only a guide - they shouldn't even have other
-				// characters IN the specifier so it doesn't matter - it will
-				// point to a bug, which is the important thing.
-				if (doSave)
+				// Allow trailing string literals.
+				++format;
+				char
+					* str = format,
+					* write = format;
+				bool
+					escape = false;
+				while (!IsEnd(*str) && (escape || *str != '\''))
 				{
-					if (*format == '}')
+					if (*str == '\\')
 					{
-						logprintf("sscanf warning: Not in a quiet section.");
-					}
-					else if (*format != '{')
-					{
-						// Fix the bad display bug.
-						logprintf("sscanf warning: Format specifier does not match parameter count.");
-					}
-					// Only display it once.
-					break;
-				}
-				else
-				{
-					if (*format == '}')
-					{
-						doSave = true;
+						if (escape)
+						{
+							// "\\" - Go back a step to write this
+							// character over the last character (which
+							// just happens to be the same character).
+							--write;
+						}
+						escape = !escape;
 					}
 					else
 					{
-						logprintf("sscanf warning: Format specifier does not match parameter count.");
-						break;
+						if (*str == '\'')
+						{
+							// Overwrite the escape character with the
+							// quote character.  Must have been
+							// preceeded by a slash or it wouldn't have
+							// got to here in the loop.
+							--write;
+						}
+						escape = false;
 					}
+					// Copy the string over itself to get rid of excess
+					// escape characters.
+					// Not sure if it's faster in the average case to
+					// always do the copy or check if it's needed.
+					// This write is always safe as it makes the string
+					// shorter, so we'll never run out of space.  It
+					// will also not overwrite the original string.
+					*write++ = *str++;
+				}
+				if (*str == '\'')
+				{
+					// Correct end.  Make a shorter string to search
+					// for.
+					*write = '\0';
+					// Find the current section of format in string.
+					char *
+						find = strstr(string, format);
+					if (!find)
+					{
+						// Didn't find the string
+						RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
+						return SSCANF_FAIL_RETURN;
+					}
+					// Found the string.  Update the current string
+					// position to the length of the search term
+					// further along from the start of the term.  Use
+					// "write" here as we want the escaped string
+					// length.
+					string = find + (write - format);
+					// Move to after the end of the search string.  Use
+					// "str" here as we want the unescaped string
+					// length.
+					format = str + 1;
+				}
+				else
+				{
+					SscanfWarning("Unclosed string literal.");
+					char *
+						find = strstr(string, format);
+					if (!find)
+					{
+						RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
+						return SSCANF_FAIL_RETURN;
+					}
+					string = find + (write - format);
+					format = str;
 				}
 			}
-			++format;
+			else
+			{
+				if (!IsWhitespace(*format))
+				{
+					// Only print this warning if the remaining characters are
+					// not spaces - spaces are allowed, and sometimes required,
+					// on the ends of formats (e.g. to stop the final 's'
+					// specifier collecting all remaining characters and only
+					// get one word).  We could check that the remaining
+					// specifier is a valid one, but this is only a guide - they
+					// shouldn't even have other characters IN the specifier so
+					// it doesn't matter - it will point to a bug, which is the
+					// important thing.
+					if (doSave)
+					{
+						if (*format == '}')
+						{
+							SscanfWarning("Not in a quiet section.");
+						}
+						else if (*format != '{')
+						{
+							// Fix the bad display bug.
+							SscanfWarning("Format specifier does not match parameter count 3: %c.", *format);
+						}
+						// Only display it once.
+						break;
+					}
+					else
+					{
+						if (*format == '}')
+						{
+							doSave = true;
+						}
+						else
+						{
+							SscanfWarning("Format specifier does not match parameter count 4.");
+							break;
+						}
+					}
+				}
+				++format;
+			}
 		}
 		while (*format);
 	}
 	if (!doSave)
 	{
 		// Started a quiet section but never explicitly ended it.
-		logprintf("sscanf warning: Unclosed quiet section.");
+		SscanfWarning("Unclosed quiet section.");
 	}
 	// No more parameters and no more format specifiers which could be read
 	// from - this is a valid return!
-	RestoreOpts(defaultOpts);
+	RestoreOpts(defaultOpts, defaultAlpha, defaultForms);
 	return SSCANF_TRUE_RETURN;
+}
+
+static cell AMX_NATIVE_CALL
+	n_old_sscanf(AMX * amx, cell const * params)
+{
+	if (g_iTrueMax == 0)
+	{
+		logprintf("sscanf error: System not initialised.");
+		return SSCANF_FAIL_RETURN;
+	}
+	// Friendly note, the most complex set of specifier additions is:
+	// 
+	//  A<i>(10, 11)[5]
+	// 
+	// In that exact order - type, default, size.  It's very opposite to how
+	// it's done in code, where you would do the eqivalent to:
+	// 
+	//  <i>[5] = {10, 11}
+	// 
+	// But this method is vastly simpler to parse in this context!  Technically
+	// you can, due to legacy support for 'p', do:
+	// 
+	//  Ai(10, 11)[5]
+	// 
+	// But you will get an sscanf warning, and I may remove that ability from
+	// the start - that will mean a new function, but an easy to write one.
+	// In fact the most complex will probably be something like:
+	// 
+	//  E<ifs[32]s[8]d>(10, 12.3, Hello there, Hi, 42)
+	// 
+	// Get the number of parameters passed.  We add one as the indexes are out
+	// by one (OBOE - Out By One Error) due to params[0] being the parameter
+	// count, not an actual parameter.
+	const int
+		paramCount = ((int)params[0] / 4) + 1;
+	// Could add a check for only 3 parameters here - I can't think of a time
+	// when you would not want any return values at all, but that doesn't mean
+	// they don't exist - you could just want to check but not save the format.
+	// Update - that is now a possibility with the '{...}' specifiers.
+	if (paramCount < (2 + 1))
+	{
+		logprintf("sscanf error: Missing required parameters.");
+		return SSCANF_FAIL_RETURN;
+	}
+	// Bacup up the file/line data for nested calls.
+	char
+		* px = gFormat,
+		* pf = gCallFile;
+	int
+		pl = gCallLine;
+	cell *
+		pp = gCallResolve;
+	gFormat = 0;
+	gCallFile = 0;
+	gCallLine = -1;
+	gCallResolve = 0;
+	SscanfWarning("Include / plugin mismatch, please recompile your script for the latest features.");
+	// Set up function wide values.
+	// Get and check the main data.
+	// Pointer to the current format specifier.
+	// Doesn't use `SscanfError`, because we don't have the format specifier yet.
+	SAFE_STR_PARAM(amx, params[2], gFormat);
+	// Pointer to the current input data.
+	char *
+		string;
+	STR_PARAM(amx, params[1], string);
+	cell ret = Sscanf(amx, string, gFormat, params + 3, paramCount - 3);
+	// Restore and free the error data, if it wasn't constant.
+	if (gCallFile && gCallResolve)
+	{
+		free(gCallFile);
+	}
+	gCallResolve = pp;
+	gCallLine = pl;
+	gCallFile = pf;
+	gFormat = px;
+	return ret;
+}
+
+// native sscanf(const data[], const format[], (Float,_}:...);
+static cell AMX_NATIVE_CALL
+	n_sscanf(AMX * amx, cell const * params)
+{
+	if (g_iTrueMax == 0)
+	{
+		logprintf("sscanf error: System not initialised.");
+		return SSCANF_FAIL_RETURN;
+	}
+	// Friendly note, the most complex set of specifier additions is:
+	// 
+	//  A<i>(10, 11)[5]
+	// 
+	// In that exact order - type, default, size.  It's very opposite to how
+	// it's done in code, where you would do the eqivalent to:
+	// 
+	//  <i>[5] = {10, 11}
+	// 
+	// But this method is vastly simpler to parse in this context!  Technically
+	// you can, due to legacy support for 'p', do:
+	// 
+	//  Ai(10, 11)[5]
+	// 
+	// But you will get an sscanf warning, and I may remove that ability from
+	// the start - that will mean a new function, but an easy to write one.
+	// In fact the most complex will probably be something like:
+	// 
+	//  E<ifs[32]s[8]d>(10, 12.3, Hello there, Hi, 42)
+	// 
+	// Get the number of parameters passed.  We add one as the indexes are out
+	// by one (OBOE - Out By One Error) due to params[0] being the parameter
+	// count, not an actual parameter.
+	const int
+		paramCount = ((int)params[0] / 4) + 1;
+	// Could add a check for only 3 parameters here - I can't think of a time
+	// when you would not want any return values at all, but that doesn't mean
+	// they don't exist - you could just want to check but not save the format.
+	// Update - that is now a possibility with the '{...}' specifiers.
+	if (paramCount < (4 + 1))
+	{
+		logprintf("sscanf error: Missing required parameters.");
+		return SSCANF_FAIL_RETURN;
+	}
+	// Bacup up the file/line data for nested calls.
+	char
+		* px = gFormat,
+		* pf = gCallFile;
+	int
+		pl = gCallLine;
+	cell *
+		pp = gCallResolve;
+	gFormat = 0;
+	gCallFile = 0;
+	gCallLine = params[2];
+	amx_GetAddr(amx, params[1], &gCallResolve);
+	SAFE_STR_PARAM(amx, params[4], gFormat);
+	// Pointer to the current input data.
+	char *
+		string;
+	STR_PARAM(amx, params[3], string);
+	cell ret = Sscanf(amx, string, gFormat, params + 5, paramCount - 5);
+	// Restore and free the error data, if it wasn't constant.
+	if (gCallFile && gCallResolve)
+	{
+		free(gCallFile);
+	}
+	gCallResolve = pp;
+	gCallLine = pl;
+	gCallFile = pf;
+	gFormat = px;
+	return ret;
+}
+
+// native sscanf(const data[], const format[], (Float,_}:...);
+PAWN_NATIVE_EXPORT cell PAWN_NATIVE_API
+	PawnSScanf(AMX * amx, char * string, char * format, cell const * params, int paramCount, char * file, int line)
+{
+	if (g_iTrueMax == 0)
+	{
+		logprintf("sscanf error: System not initialised.");
+		return SSCANF_FAIL_RETURN;
+	}
+	// Bacup up the file/line data for nested calls.
+	char
+		* px = gFormat,
+		* pf = gCallFile;
+	int
+		pl = gCallLine;
+	cell *
+		pp = gCallResolve;
+	gFormat = format;
+	gCallFile = file;
+	gCallLine = line;
+	cell ret = Sscanf(amx, string, gFormat, params, paramCount);
+	// Restore and free the error data, if it wasn't constant.
+	gCallResolve = pp;
+	gCallLine = pl;
+	gCallFile = pf;
+	gFormat = px;
+	return ret;
 }
 
 //#if SSCANF_QUIET
@@ -1278,93 +1605,8 @@ void
 }
 //#endif
 
-//----------------------------------------------------------
-// The Support() function indicates what possibilities this
-// plugin has. The SUPPORTS_VERSION flag is required to check
-// for compatibility with the server. 
-
-PLUGIN_EXPORT unsigned int PLUGIN_CALL
-	Supports() 
-{
-	return SUPPORTS_VERSION | SUPPORTS_AMX_NATIVES;
-}
-
-//----------------------------------------------------------
-// The Load() function gets passed on exported functions from
-// the SA-MP Server, like the AMX Functions and logprintf().
-// Should return true if loading the plugin has succeeded.
-
-PLUGIN_EXPORT bool PLUGIN_CALL
-	Load(void ** ppData)
-{
-	pAMXFunctions = ppData[PLUGIN_DATA_AMX_EXPORTS];
-	logprintf = (logprintf_t)ppData[PLUGIN_DATA_LOGPRINTF];
-	real_logprintf = logprintf;
-	//GetServer = (GetServer_t)ppData[0xE1];
-	
-	//logprintf("0x%08X\n", (int)logprintf);
-	logprintf("\n");
-	logprintf(" ===============================\n");
-	logprintf("      sscanf plugin loaded.     \n");
-	logprintf("         Version:  2.8.3        \n");
-	logprintf("  (c) 2018 Alex \"Y_Less\" Cole  \n");
-	logprintf(" ===============================\n");
-	
-	// Determine server version.  Ideally we would use a feature check, such as
-	// checking wether ConnectNPC exists, doing away with the need for any
-	// memory addresses, unfortunately if the native isn't used in the current
-	// amx, then amx_FindNative won't find it, despite the fact that it does
-	// exist.  I need to find a more reliable and more portable way of checking
-	// the current server version.
-	/*if (logprintf == LOGPRINTF_0221 || logprintf == LOGPRINTF_0222 || logprintf == LOGPRINTF_0223 || logprintf == LOGPRINTF_0224)
-	{
-		g_iServerVersion = SERVER_VERSION_0200;
-		g_iTrueMax = MAX_PLAYERS_0200;
-		g_iInvalid = INVALID_PLAYER_ID_0200;
-	}
-	else if (logprintf == LOGPRINTF_0300)
-	{
-		g_iServerVersion = SERVER_VERSION_0300;
-		g_iTrueMax = MAX_PLAYERS_0300;
-		g_iInvalid = INVALID_PLAYER_ID_0300;
-	}
-	else *//*if (logprintf == LOGPRINTF_0340)
-	{
-		g_iServerVersion = SERVER_VERSION_0340;
-		g_iTrueMax = MAX_PLAYERS_0300;
-		g_iInvalid = INVALID_PLAYER_ID_0300;
-	}
-	else if (logprintf == LOGPRINTF_0342)
-	{
-		g_iServerVersion = SERVER_VERSION_0342;
-		g_iTrueMax = MAX_PLAYERS_0300;
-		g_iInvalid = INVALID_PLAYER_ID_0300;
-	}
-	else
-	{
-		logprintf("sscanf error: The current build ONLY supports 0.3d");
-	}*/ 
-	#if SSCANF_QUIET
-		logprintf = qlog;
-	#endif
-	return true;
-}
-
-//----------------------------------------------------------
-// The Unload() function is called when the server shuts down,
-// meaning this plugin gets shut down with it.
-
-PLUGIN_EXPORT void PLUGIN_CALL
-	Unload()
-{
-	logprintf("\n");
-	logprintf(" ===============================\n");
-	logprintf("     sscanf plugin unloaded.    \n");
-	logprintf(" ===============================\n");
-}
-
 static cell AMX_NATIVE_CALL
-	n_SSCANF_Init(AMX * amx, cell * params)
+	n_SSCANF_Init(AMX * amx, cell const * params)
 {
 	if (params[0] != 3 * sizeof (cell))
 	{
@@ -1405,7 +1647,7 @@ static void
 }
 
 static cell AMX_NATIVE_CALL
-	n_SSCANF_IsConnected(AMX * amx, cell * params)
+	n_SSCANF_IsConnected(AMX * amx, cell const * params)
 {
 	cell playerid;
 
@@ -1419,7 +1661,7 @@ static cell AMX_NATIVE_CALL
 }
 
 static cell AMX_NATIVE_CALL
-	n_SSCANF_Join(AMX * amx, cell * params)
+	n_SSCANF_Join(AMX * amx, cell const * params)
 {
 	if (params[0] != 3 * sizeof (cell))
 	{
@@ -1435,7 +1677,7 @@ static cell AMX_NATIVE_CALL
 }
 
 static cell AMX_NATIVE_CALL
-	n_SSCANF_Leave(AMX * amx, cell * params)
+	n_SSCANF_Leave(AMX * amx, cell const * params)
 {
 	if (params[0] != 1 * sizeof (cell))
 	{
@@ -1448,22 +1690,63 @@ static cell AMX_NATIVE_CALL
 }
 
 static cell AMX_NATIVE_CALL
-	n_SSCANF_Option(AMX * amx, cell * params)
+	n_SSCANF_Option(AMX * amx, cell const * params)
 {
-	if (params[0] != 2 * sizeof (cell))
+	if (params[0] == 1 * sizeof (cell))
+	{
+		// Get.
+		char *
+			string;
+		SAFE_STR_PARAM(amx, params[1], string);
+		return GetOptions(string);
+	}
+	else if (params[0] == 2 * sizeof (cell))
+	{
+		// Set.
+		char *
+			string;
+		SAFE_STR_PARAM(amx, params[1], string);
+		SetOptions(string, params[2]);
+		return 1;
+	}
+	else
 	{
 		logprintf("sscanf error: SSCANF_Option has incorrect parameters.");
 		return 0;
 	}
-	char *
-		string;
-	STR_PARAM(amx, params[1], string);
-	DoOptions(string, params[2]);
-	return 1;
 }
 
 static cell AMX_NATIVE_CALL
-	n_SSCANF_SetPlayerName(AMX * amx, cell * params)
+	n_SSCANF_Version(AMX * amx, cell const * params)
+{
+	if (params[0] == 2 * sizeof(cell))
+	{
+		// Return the version as a string.
+		cell length = params[2];
+		if (length > 0)
+		{
+			cell * cptr;
+			amx_GetAddr(amx, params[1], &cptr);
+			amx_SetString(cptr, SSCANF_VERSION, 1, 0, length);
+		}
+	}
+	else if (params[0] != 0 * sizeof(cell))
+	{
+		logprintf("sscanf error: SSCANF_Version has incorrect parameters.");
+		return 0;
+	}
+	// Return the version in BCD.
+	return
+		((SSCANF_VERSION_MAJOR / 10) << 20) |
+		((SSCANF_VERSION_MAJOR % 10) << 16) |
+		((SSCANF_VERSION_MINOR / 10) << 12) |
+		((SSCANF_VERSION_MINOR % 10) << 8) |
+		((SSCANF_VERSION_BUILD / 10) << 4) |
+		((SSCANF_VERSION_BUILD % 10) << 0);
+}
+
+static cell AMX_NATIVE_CALL
+	n_SSCANF_SetPlayerName(AMX * amx, cell const * params)
 {
 	// Hook ALL AMXs, even if they don't use sscanf, by working at the plugin
 	// level.  This allows us to intercept name changes.
@@ -1481,6 +1764,72 @@ static cell AMX_NATIVE_CALL
 	return return_val;
 }
 
+#if !defined min
+	inline int min(int a, int b)
+	{
+		return a < b ? a : b;
+	}
+#endif
+
+static cell AMX_NATIVE_CALL
+	n_SSCANF_Levenshtein(AMX * amx, cell const * params)
+{
+	if (params[0] != 2 * sizeof(cell))
+	{
+		logprintf("sscanf error: SSCANF_Levenshtein has incorrect parameters.");
+		return -1;
+	}
+	// Get the two strings to compare.
+	char
+		* string1,
+		* string2;
+	int
+		len1,
+		len2;
+	LENGTH_STR_PARAM(amx, params[1], string1, len1);
+	LENGTH_STR_PARAM(amx, params[2], string2, len2);
+	if (len1 == 0)
+	{
+		return len2;
+	}
+	if (len2 == 0)
+	{
+		return len1;
+	}
+	int *
+		matrix = (int *)malloc(sizeof(int) * (len1 + 1) * (len2 + 1));
+	if (matrix == NULL)
+	{
+		return 0;
+	}
+	int step = len2 + 1;
+	for (int i = 0; i <= len1; i++)
+	{
+		matrix[i * step + 0] = i;
+	}
+	for (int j = 0; j <= len2; j++)
+	{
+		matrix[0 * step + j] = j;
+	}
+	for (int i = 1; i <= len1; i++)
+	{
+		for (int j = 1; j <= len2; j++)
+		{
+			matrix[i * step + j] =
+				min(
+					min(
+						matrix[(i - 1) * step + j] + 1,
+						matrix[i * step + (j - 1)] + 1
+					),
+					matrix[(i - 1) * step + (j - 1)] + ((string1[i - 1] == string2[j - 1]) ? 0 : 1)
+				);
+		}
+	}
+	int ret = matrix[len1 * step + len2];
+	free(matrix);
+	return ret;
+}
+
 //----------------------------------------------------------
 // The AmxLoad() function gets called when a new gamemode or
 // filterscript gets loaded with the server. In here we register
@@ -1489,12 +1838,15 @@ static cell AMX_NATIVE_CALL
 AMX_NATIVE_INFO
 	sscanfNatives[] =
 		{
-			{"sscanf", n_sscanf},
+			{"sscanf", n_old_sscanf},
+			{"SSCANF__", n_sscanf},
 			{"SSCANF_Init", n_SSCANF_Init},
 			{"SSCANF_Join", n_SSCANF_Join},
 			{"SSCANF_Leave", n_SSCANF_Leave},
 			{"SSCANF_IsConnected", n_SSCANF_IsConnected},
 			{"SSCANF_Option", n_SSCANF_Option},
+			{"SSCANF_Version", n_SSCANF_Version},
+			{"SSCANF_Levenshtein", n_SSCANF_Levenshtein},
 			{0,        0}
 		};
 
@@ -1515,8 +1867,23 @@ AMX_NATIVE_INFO
 		(char *)((unsigned char*)(hdr) + (unsigned)((AMX_FUNCSTUBNT*)(entry))->nameofs) : \
 		((AMX_FUNCSTUB*)(entry))->name)
 
-PLUGIN_EXPORT int PLUGIN_CALL
-	AmxLoad(AMX * amx) 
+//----------------------------------------------------------
+// The Support() function indicates what possibilities this
+// plugin has. The SUPPORTS_VERSION flag is required to check
+// for compatibility with the server. 
+
+PLUGIN_EXPORT unsigned int PLUGIN_CALL
+	Supports() 
+{
+	return SUPPORTS_VERSION | SUPPORTS_AMX_NATIVES;
+}
+
+//----------------------------------------------------------
+// The Load() function gets passed on exported functions from
+// the SA-MP Server, like the AMX Functions and logprintf().
+// Should return true if loading the plugin has succeeded.
+
+int Init(AMX * amx) 
 {
 	int
 		num,
@@ -1547,8 +1914,135 @@ PLUGIN_EXPORT int PLUGIN_CALL
 // When a gamemode is over or a filterscript gets unloaded, this
 // function gets called. No special actions needed in here.
 
-PLUGIN_EXPORT int PLUGIN_CALL
-	AmxUnload(AMX * amx) 
+int Cleanup(AMX * amx) 
 {
 	return AMX_ERR_NONE;
 }
+
+// Standard gamemode/filterscript functions.
+PLUGIN_EXPORT int PLUGIN_CALL
+	AmxLoad(AMX * amx) 
+{
+	return Init(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL
+	AmxUnload(AMX * amx) 
+{
+	return Cleanup(amx);
+}
+
+//----------------------------------------------------------
+// The Load() function gets passed on exported functions from
+// the SA-MP Server, like the AMX Functions and logprintf().
+// Should return true if loading the plugin has succeeded.
+
+PLUGIN_EXPORT bool PLUGIN_CALL
+	Load(void ** ppData)
+{
+	pAMXFunctions = ppData[PLUGIN_DATA_AMX_EXPORTS];
+	logprintf = (logprintf_t)ppData[PLUGIN_DATA_LOGPRINTF];
+	real_logprintf = logprintf;
+	
+	logprintf("\n");
+	logprintf(" ===============================\n");
+	logprintf("      sscanf plugin loaded.     \n");
+	logprintf("        Version:  " SSCANF_VERSION "        \n");
+	logprintf("   (c) 2022 Alex \"Y_Less\" Cole  \n");
+	logprintf(" ===============================\n");
+
+	#if SSCANF_QUIET
+		logprintf = qlog;
+	#endif
+	return true;
+}
+
+//----------------------------------------------------------
+// The Unload() function is called when the server shuts down,
+// meaning this plugin gets shut down with it.
+
+PLUGIN_EXPORT void PLUGIN_CALL
+	Unload()
+{
+	logprintf("\n");
+	logprintf(" ===============================\n");
+	logprintf("     sscanf plugin unloaded.    \n");
+	logprintf(" ===============================\n");
+}
+
+int NpcInit(AMX * amx)
+{
+	pAMXFunctions = NPC_AMX_FUNCTIONS;
+	logprintf = qlog;
+	real_logprintf = qlog;
+	
+	logprintf("\n");
+	logprintf(" ===============================\n");
+	logprintf("      sscanf plugin loaded.     \n");
+	logprintf("        Version:  " SSCANF_VERSION " (NPC)  \n");
+	logprintf("   (c) 2022 Alex \"Y_Less\" Cole  \n");
+	logprintf(" ===============================\n");
+
+	return Init(amx);
+}
+
+int NpcCleanup(AMX * amx)
+{
+	int ret = Cleanup(amx);
+
+	logprintf("\n");
+	logprintf(" ===============================\n");
+	logprintf("     sscanf plugin unloaded.    \n");
+	logprintf(" ===============================\n");
+
+	return ret;
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_sscanfInit(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcInit(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_sscanf2Init(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcInit(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_amxsscanfInit(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcInit(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_amxsscanf2Init(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcInit(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_sscanfCleanup(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcCleanup(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_sscanf2Cleanup(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcCleanup(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_amxsscanfCleanup(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcCleanup(amx);
+}
+
+PLUGIN_EXPORT int PLUGIN_CALL amx_amxsscanf2Cleanup(AMX * amx)
+{
+	// NPC plugin init functions.  Relies on the plugin name.
+	return NpcCleanup(amx);
+}
+
