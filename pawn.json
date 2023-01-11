@@ -18,13 +18,57 @@
         {
             "name": "^sscanf-(.+)-linux.tar.gz$",
             "platform": "linux",
+            "version": "openmp",
             "archive": true,
             "includes": ["pawno/include"],
-            "plugins": ["plugins/sscanf.so"]
+            "files": {
+                "components/sscanf.so": "../../../components/sscanf.so"
+            }
         },
         {
             "name": "^sscanf-(.*)-win32.zip$",
             "platform": "windows",
+            "version": "openmp",
+            "archive": true,
+            "includes": ["pawno/include"],
+            "files": {
+                "components/sscanf.dll": "../../../components/sscanf.dll"
+            }
+        },
+        {
+            "name": "^sscanf-(.+)-linux.tar.gz$",
+            "platform": "linux",
+            "version": "0.3.7",
+            "archive": true,
+            "includes": ["pawno/include"],
+            "plugins": ["plugins/sscanf.so"],
+            "files": {
+                "components/sscanf.so": "../../../components/sscanf.so"
+            }
+        },
+        {
+            "name": "^sscanf-(.*)-win32.zip$",
+            "platform": "windows",
+            "version": "0.3.7",
+            "archive": true,
+            "includes": ["pawno/include"],
+            "plugins": ["plugins/sscanf.dll"]
+        },
+        {
+            "name": "^sscanf-(.+)-linux.tar.gz$",
+            "platform": "linux",
+            "version": "0.3.DL",
+            "archive": true,
+            "includes": ["pawno/include"],
+            "plugins": ["plugins/sscanf.so"],
+            "files": {
+                "components/sscanf.so": "../../../components/sscanf.so"
+            }
+        },
+        {
+            "name": "^sscanf-(.*)-win32.zip$",
+            "platform": "windows",
+            "version": "0.3.DL",
             "archive": true,
             "includes": ["pawno/include"],
             "plugins": ["plugins/sscanf.dll"]
