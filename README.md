@@ -2020,7 +2020,7 @@ Exclude the default `k<weapon>` kustom specifier from being compiled when this i
 
 ### `SSCANF_NO_NICE_FEATURES`
 
-Several sscanf features, such as file and line numbers in errors, only work on the new compiler.  If you want to use the old compiler you'll get an error because those nice features won't work.  If you want to compile anyway without those features you need to define this symbol before inclusion.
+Several sscanf features, such as file and line numbers in errors, only work on the new compiler.  If you want to use the old compiler those nice features won't work.  If you want to compile anyway without those features you need to define this symbol before inclusion.
 
 ### `SSCANF_GetLastError();`
 
