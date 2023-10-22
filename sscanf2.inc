@@ -120,11 +120,6 @@
 	#undef SSCANF_STATIC__
 	#define SSCANF_STATIC__ static
 #endif
-#if __pawn_build == 0
-	#if !defined SSCANF_NO_NICE_FEATURES
-		#error sscanf utilises community compiler features.  Use `#define SSCANF_NO_NICE_FEATURES` to live without (if you can call that living) or better yet download it here: github.com/pawn-lang/compiler/releases
-	#endif
-#endif
 
 /**
  * <library>sscanf</library>
