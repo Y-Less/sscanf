@@ -490,7 +490,7 @@ int
 				SscanfError(71, "End of text is not supported in enums.");
 				return SSCANF_FAIL_RETURN;
 			case '%':
-				SscanfWarning(25, "sscanf specifiers do not require '%' before them.");
+				SscanfWarning(25, "sscanf specifiers do not require '%%' before them.");
 				continue;
 			case '-':
 				{
@@ -584,7 +584,7 @@ int
 						len = 0;
 						break;
 					case '%':
-						SscanfWarning(25, "sscanf specifiers do not require '%' before them.");
+						SscanfWarning(25, "sscanf specifiers do not require '%%' before them.");
 						len = 0;
 						break;
 					case '-':

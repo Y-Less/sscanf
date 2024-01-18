@@ -1149,7 +1149,7 @@ static cell
 				}
 				return SSCANF_TRUE_RETURN;
 			case '%':
-				SscanfWarning(25, "sscanf specifiers do not require '%' before them.");
+				SscanfWarning(25, "sscanf specifiers do not require '%%' before them.");
 				continue;
 			default:
 				SscanfWarning(9, "Unknown format specifier '%c', skipping.", *(format - 1));
@@ -1391,7 +1391,7 @@ static cell
 				}
 				return SSCANF_TRUE_RETURN;
 			case '%':
-				SscanfWarning(25, "sscanf specifiers do not require '%' before them.");
+				SscanfWarning(25, "sscanf specifiers do not require '%%' before them.");
 				break;
 			default:
 				SscanfWarning(9, "Unknown format specifier '%c', skipping.", *(format - 1));
